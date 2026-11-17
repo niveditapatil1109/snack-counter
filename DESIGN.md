@@ -1,91 +1,92 @@
 # Snack Counter Automation: Design
 
-## What "automate" means here
+## Approach
 
-Buying snacks stays a human job. What breaks today is the **coordination around it**, so that is what gets automated. A chat bot, backed by a small Node.js service:
-
-- turns "the box is empty" into a refill with exactly **one named owner**,
-- chooses that owner fairly,
-- states the spending limit up front,
-- hands the refill on when the owner stalls,
-- files the HR claim the moment the receipt is uploaded,
-- follows the claim until it is paid,
-- produces one monthly report across both currencies.
+Buying snacks stays a human job. What breaks is the coordination around it, so that is what gets automated. A chat bot, backed by a small Node.js service, gives each empty box **one named owner**, chosen fairly, and tells them their spending limit. It hands the refill on if they stall, files the HR claim as soon as the receipt is uploaded, and follows the claim until it is paid. It also sends one monthly report across both currencies.
 
 ## How a refill moves from "empty" to "reimbursed"
 
 ```mermaid
 stateDiagram-v2
     [*] --> REPORTED: /snack empty
-    REPORTED --> OFFERED: budget OK, fairest volunteer asked
-    REPORTED --> BLOCKED_BUDGET: less than a useful purchase left
+    REPORTED --> OFFERED: budget OK
+    REPORTED --> BLOCKED_BUDGET: budget too low
     BLOCKED_BUDGET --> OFFERED: admin approves
-    OFFERED --> OFFERED: decline or 2 h no answer, next person
-    OFFERED --> COMMITTED: accepts (only one can)
-    COMMITTED --> OFFERED: no receipt in 24 h, released
-    OFFERED --> ESCALATED: 3 people passed or nobody available
-    ESCALATED --> COMMITTED: first volunteer to accept
-    COMMITTED --> REFILLED: receipt + amount uploaded
-    REFILLED --> CLAIM_SUBMITTED: sent to HR (retried if HR is down)
-    CLAIM_SUBMITTED --> REIMBURSED: HR approves
-    CLAIM_SUBMITTED --> CLAIM_REJECTED: HR rejects, admin follows up
+    OFFERED --> OFFERED: decline / 2 h no answer, next person
+    OFFERED --> COMMITTED: accepts
+    COMMITTED --> OFFERED: 24 h, no receipt, released
+    OFFERED --> ESCALATED: 3 people passed
+    ESCALATED --> COMMITTED: first to accept wins
+    COMMITTED --> REFILLED: receipt uploaded
+    REFILLED --> REFILLED: HR down, retried
+    REFILLED --> CLAIM_SUBMITTED: filed with HR
+    CLAIM_SUBMITTED --> REIMBURSED: approved
+    CLAIM_SUBMITTED --> CLAIM_REJECTED: rejected, admin follows up
 ```
 
-Every legal move is listed in one table in code. Anything else throws, and every move is appended to an audit history. Deadlines are stored on the refill, not held in in-memory timers. A scheduler job that runs every few minutes does three things: expires offers and commitments, retries HR, and polls claim status. That makes a restart, a missed run or a doubled run harmless.
+**Timers:**
+- A volunteer has 2 h to answer an offer and 24 h to upload a receipt.
+- After 3 people pass, the refill opens to everyone and the admin is pinged.
+- A claim still pending after 10 days triggers a nudge.
 
-## Main parts and the data each keeps
+**Reliability:**
+- Deadlines are stored on the refill, and a scheduler job checks them every few minutes, so a restart or a missed run loses nothing.
+- All legal moves sit in one table in the code. Anything else throws.
+- Every move is written to an audit history.
+
+## Main parts and their data
 
 | Part | Job | Data it keeps |
 |---|---|---|
-| **Refill state machine** (pure) | Legal transitions, versioning, audit trail | `Refill`: office, state, version, assignee, people already asked, cap, deadlines, purchase, claim, history |
-| **Assignment policy** (pure function) | Who buys next | None. Reads volunteers and refill history |
-| **Budget rules** (pure) | Remaining budget, cap, monthly spend | None. Derived from purchases, so no second copy can drift |
+| **Refill state machine** | Legal moves, version number, audit history | Refill: office, state, version, current assignee, people already asked, cap, deadlines, purchase, claim, history |
+| **Assignment policy** | Picks who buys next (pure function) | Nothing. It reads volunteers and past refills |
+| **Budget rules** | Remaining budget, cap, monthly spend | Nothing. It always derives from purchases, so it cannot drift |
 | **Refill service** | Report, offer, accept, decline, timeouts, receipt, admin actions | Writes refills through the store |
-| **Claims service** | Submit with idempotency key, retry, poll, nudge | `claim` on the refill: HR id, attempts, last error, dates |
-| **Volunteer service** | Holidays and cross-office visits | `Volunteer`: home office, active, away periods, visits |
-| **Report service** | Monthly report and chat delivery | Exchange rates used are stored in the report |
-| **Ports + fakes** | Chat, HR, clock, store are injected | Fakes record messages and claims for tests |
-| **Config** | Offices (currency, timezone, budget, typical range, admin) and timing rules | Static |
+| **Claims service** | Files the HR claim, retries, polls status, nudges | HR claim id, attempts, last error, dates |
+| **Volunteer and report services** | Holidays and visits; monthly report | Volunteer: home office, holidays, visits. Report: the exchange rates used |
+| **Adapters** | Chat, HR, storage and clock, injected (fakes in tests) | The store checks the version on every write |
 
 ## How each problem is prevented
 
 | Problem | Prevention |
 |---|---|
-| **Box empty for days** | One named person is asked, not a group: group requests cause the "someone else will do it" effect. A 2 h offer timeout and a 24 h purchase deadline pass the refill on automatically. After 3 people pass, it opens to everyone and the admin is pinged. The report shows average hours empty |
-| **Two people buy the same day** | At most **one open refill per office**, and repeat reports join it. Accepting is a compare-and-set on the refill's `version`, so exactly one accept wins. The channel is told "X is refilling, nobody else needs to buy". A released buyer is told explicitly not to buy |
-| **Same few people, slow money** | Ranking puts first whoever has (1) no claim still awaiting reimbursement, then (2) the fewest refills in the last 90 days, then (3) the longest gap since their last refill. Claims are filed automatically on receipt upload, retried until accepted, and the admin is nudged after 10 days |
-| **Unknown spend / what's eaten** | Every purchase is recorded with office, currency and office-local month. The monthly report gives native totals, budget used %, one combined total with the exchange rate stored, refills per person, and the "ran out first" items |
+| **Box empty for days** | One named person is asked, not a group. Unanswered or unfinished refills move on automatically. After 3 people, everyone is asked and the admin is pinged |
+| **Two people buy the same day** | Only one open refill per office, and repeat reports join it. Accepting checks the refill's version, so exactly one accept wins. The channel hears "X is refilling", and a released buyer is told not to buy |
+| **Same few people, slow money** | The rotation picks:<br>1. people not waiting for a reimbursement first,<br>2. then whoever has the fewest refills in 90 days,<br>3. then whoever refilled least recently.<br>Claims are filed on receipt upload, then retried, tracked and chased |
+| **Unknown spend** | Every purchase is recorded by office, currency and local month. The report gives per-office totals, budget used, one combined total with the exchange rates stored, refills per person and what ran out first |
 
-**Money and currencies.** Amounts are integer minor units (øre, paise). Mixing currencies throws. A budget belongs to the **counter**, in its currency. A Bengaluru employee refilling the Oslo box spends Oslo's NOK budget, and the claim is filed in NOK; HR pays them in their INR payroll, as the brief says. A purchase belongs to the month it was made in, in the office's timezone, not when HR approved it.
+**Money:**
+- Amounts are whole øre and paise. Mixing currencies throws an error.
+- Budgets belong to the counter, not the person. A Bengaluru visitor refilling Oslo spends Oslo's NOK budget and files the claim in NOK, and HR pays them in INR.
+- A purchase counts in the month it was made, in that office's timezone.
 
 ## Trade-offs
 
-- **Direct assignment over "first come first served".** It is a little slower but removes the bystander effect. Broadcast is kept as the fallback.
-- **Working from home is not tracked.** Daily check-ins would not happen. A one-tap Decline moves the refill on instantly. Only holidays and visits are declared.
-- **Soft cap.** An overspend within 10% is fine. Above that it is flagged but still reimbursed, because the volunteer has already paid. Running out of budget blocks *before* anyone buys, never after.
-- **No reservation ledger.** With one open refill per office, the cap told to the buyer *is* the reservation.
-- **Polling HR, not webhooks.** It works whatever the vendor supports. The idempotency key means a retry never creates a second claim.
-- **Wall-clock timeouts.** An offer can expire overnight. An office working-hours calendar is the first follow-up.
-- **In-memory store behind a store interface.** Each method maps to one SQL statement, including `UPDATE … WHERE version = $n` and a partial unique index for "one open refill per office".
+- **One named person, not "first come, first served".** It is slightly slower, but it removes the "someone else will do it" effect. Broadcasting is the fallback.
+- **No work-from-home tracking.** Daily check-ins would not happen, and Decline is one tap.
+- **Soft spending cap.** Up to 10% over is fine. More is flagged but never refused, because the volunteer has already paid. A low budget blocks the refill *before* anyone buys.
+- **Polling HR with an idempotency key.** This works whatever the vendor offers, and a retry never creates a second claim.
+- **Clock-hour timeouts.** An offer can expire overnight. Office working hours are the first follow-up.
+- **In-memory store behind an interface.** Each method maps to one SQL statement.
 
 ## Out of scope
 
-**The rule I used:** build something only if it fixes one of the four problems in the brief, or is needed to make that fix reliable. At 35 volunteers and a few refills a week, everything else costs more to build and maintain than it returns.
+**The rule:** build only what fixes one of the four problems, or makes that fix reliable. At 35 volunteers, anything else costs more than it returns.
 
 | Left out | Why |
 |---|---|
-| **Sensors or cameras on the box** | Someone still has to go and refill it, so the hard part (who owns the refill) stays the same. A one-tap `/snack empty` detects an empty box well enough. Hardware also needs buying, installing and maintaining in two offices |
-| **Receipt OCR** | Typing one amount takes seconds. OCR is unreliable across Norwegian and Indian receipt formats, so a person would have to check it anyway. HR already reviews the receipt image |
-| **Company card or direct procurement** | It would remove reimbursement entirely, so it is worth proposing. But it changes the process (finance policy, who holds the card), which is a business decision, not automation of the current process |
-| **Converting to payroll currency** | The brief says HR pays in the employee's payroll currency. Doing the conversion ourselves would duplicate HR's work and risk the two numbers disagreeing, so claims go in the receipt's currency |
-| **Our own approval workflow** | HR already approves every claim. A second approval step would only add delay, the opposite of what problem 3 needs. We only flag overspend to the admin |
-| **Snack voting and per-item stock** | Neither fixes any of the four problems. "What ran out first" on each empty report, plus the items on each receipt, answers "what gets eaten" cheaply |
-| **A web dashboard** | Everyone already uses the chat tool, and management asked for one monthly report, which is one chat message. A dashboard adds hosting, login and UI upkeep for no new information |
-| **Real Slack/Teams, HR clients and a database** | The brief asks for simulated stand-ins. They sit behind the same interfaces a real client would use, so adding the real ones later needs no change to the core logic |
+| **Sensors or cameras** | Someone still has to refill the box. A one-tap report is enough |
+| **Receipt OCR** | Typing one amount is quicker than checking OCR output, and HR reviews the receipt anyway |
+| **Company card** | It would remove reimbursement, but it is a finance decision, not automation. Worth proposing |
+| **Payroll currency conversion** | HR already pays in payroll currency. Doing it twice risks mismatches |
+| **Second approval step** | HR approves claims. Another step slows reimbursement |
+| **Voting, stock tracking** | Fixes none of the four problems. "What ran out first" already shows what gets eaten |
+| **Web dashboard** | Everyone is in chat, and the report is one message |
+| **Real chat/HR clients, database** | The brief asks for stand-ins. Real ones plug into the same interfaces |
 
-## Assumptions (questions I would ask first)
+## Assumptions to confirm
 
-- Management's reporting currency and the exchange-rate source. The code takes both as parameters and stores the rates used.
-- Does the HR API support idempotency keys or webhooks? The code assumes idempotency keys. If they are not supported, the adapter would first look up an existing claim by the refill id before retrying.
-- Who approves going over budget? A configurable admin per office is assumed.
-- Is "month" the calendar month in each office's local time? Assumed yes.
+- **Reporting currency and exchange-rate source:** passed in as parameters. The rates used are stored with each report.
+- **HR API:** it supports idempotency keys, and claim status is polled.
+- **Over-budget approval:** one admin per office approves going over budget.
+- **"Month":** the calendar month in each office's local time.
