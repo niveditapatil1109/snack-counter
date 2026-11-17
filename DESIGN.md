@@ -68,9 +68,20 @@ Every legal move is listed in one table in code. Anything else throws, and every
 - **Wall-clock timeouts.** An offer can expire overnight. An office working-hours calendar is the first follow-up.
 - **In-memory store behind a store interface.** Each method maps to one SQL statement, including `UPDATE … WHERE version = $n` and a partial unique index for "one open refill per office".
 
-## Deliberately not built
+## Out of scope
 
-Sensors or cameras on the box. Receipt OCR. Company cards or direct procurement (worth proposing, but it changes the process instead of automating it). Our own payroll exchange-rate conversion (HR owns it). Snack voting and per-item inventory. A web dashboard: the bot and a monthly chat report are enough at 35 users. Real Slack/Teams and HR clients: both are fakes behind the same interfaces.
+**The rule I used:** build something only if it fixes one of the four problems in the brief, or is needed to make that fix reliable. At 35 volunteers and a few refills a week, everything else costs more to build and maintain than it returns.
+
+| Left out | Why |
+|---|---|
+| **Sensors or cameras on the box** | Someone still has to go and refill it, so the hard part (who owns the refill) stays the same. A one-tap `/snack empty` detects an empty box well enough. Hardware also needs buying, installing and maintaining in two offices |
+| **Receipt OCR** | Typing one amount takes seconds. OCR is unreliable across Norwegian and Indian receipt formats, so a person would have to check it anyway. HR already reviews the receipt image |
+| **Company card or direct procurement** | It would remove reimbursement entirely, so it is worth proposing. But it changes the process (finance policy, who holds the card), which is a business decision, not automation of the current process |
+| **Converting to payroll currency** | The brief says HR pays in the employee's payroll currency. Doing the conversion ourselves would duplicate HR's work and risk the two numbers disagreeing, so claims go in the receipt's currency |
+| **Our own approval workflow** | HR already approves every claim. A second approval step would only add delay, the opposite of what problem 3 needs. We only flag overspend to the admin |
+| **Snack voting and per-item stock** | Neither fixes any of the four problems. "What ran out first" on each empty report, plus the items on each receipt, answers "what gets eaten" cheaply |
+| **A web dashboard** | Everyone already uses the chat tool, and management asked for one monthly report, which is one chat message. A dashboard adds hosting, login and UI upkeep for no new information |
+| **Real Slack/Teams, HR clients and a database** | The brief asks for simulated stand-ins. They sit behind the same interfaces a real client would use, so adding the real ones later needs no change to the core logic |
 
 ## Assumptions (questions I would ask first)
 

@@ -121,6 +121,17 @@ app.reports.monthlyReport('2026-11', { reportingCurrency: 'NOK', fxRates: { INR:
 | [`docs/DESIGN-DETAILED.md`](docs/DESIGN-DETAILED.md) | Functional and non-functional requirements, trade-offs, out of scope, scaling path |
 | [`docs/CODE-WALKTHROUGH.md`](docs/CODE-WALKTHROUGH.md) | File-by-file, line-referenced explanation, likely questions, presentation script |
 
-## Not built (on purpose)
+## Out of scope
 
-Box sensors, receipt OCR, company cards, payroll currency conversion, a web dashboard and real chat/HR clients. The reasons are in [`DESIGN.md`](DESIGN.md#deliberately-not-built).
+Only what fixes one of the four problems, or makes that fix reliable, was built. At 35 volunteers, everything else costs more than it returns.
+
+- **Box sensors or cameras.** Someone still has to refill it. A one-tap chat report detects "empty" well enough.
+- **Receipt OCR.** Typing one amount is quicker than checking OCR output, and HR reviews the receipt anyway.
+- **Company card or procurement.** It changes the process (a finance decision) instead of automating it. Worth proposing separately.
+- **Payroll currency conversion.** HR pays in payroll currency. Converting ourselves would duplicate that and risk mismatches.
+- **A second approval workflow.** HR already approves claims. Another step would slow reimbursement.
+- **Snack voting or stock tracking.** It doesn't fix any of the four problems. The "ran out first" items already show what gets eaten.
+- **A web dashboard.** Everyone is in chat, and the monthly report is one message.
+- **Real chat/HR clients and a database.** The brief asks for simulated stand-ins. They plug in behind the same interfaces later.
+
+Full reasoning: [`DESIGN.md`](DESIGN.md#out-of-scope).

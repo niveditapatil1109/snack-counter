@@ -415,8 +415,17 @@ Nothing is lost. Deadlines are fields on the refill (`offerExpiresAt`, `purchase
 3. A real Slack adapter with buttons.
 4. The Postgres store.
 
-**What did you deliberately not build?**
-Sensors, OCR, company cards, payroll conversion, a dashboard, snack voting. Each one adds cost without fixing one of the four stated problems.
+**What is out of scope, and why?**
+The rule: build something only if it fixes one of the four problems, or is needed to make that fix reliable. Examples:
+- **Sensors:** someone still has to refill the box.
+- **OCR:** typing one amount is faster than checking OCR output.
+- **Company card:** a finance decision, not automation.
+- **Payroll conversion:** HR's job.
+- **A second approval step:** it would slow reimbursement.
+- **Voting or stock tracking:** doesn't fix any of the four problems.
+- **Dashboard:** everyone is in chat already.
+
+The full table is under "Out of scope" in `DESIGN.md`.
 
 ---
 
@@ -428,4 +437,4 @@ Sensors, OCR, company cards, payroll conversion, a dashboard, snack voting. Each
 4. **(1.5 min) No double buying.** `reportEmpty` dedup (`refillService.js:44`), `acceptRefill` (`refillService.js:164`), and `saveRefill` version check (`inMemoryStore.js:49`).
 5. **(1.5 min) Money.** `Money` and `#assertSameCurrency`. The counter owns the budget. Office-timezone month. Run the report test.
 6. **(1 min) Run it.** `npm run demo`, then `npm test`.
-7. **(1 min) Trade-offs and what I didn't build**, from `DESIGN.md`.
+7. **(1 min) Trade-offs and Out of scope**, from `DESIGN.md`. State the rule first, then give 2–3 examples.
