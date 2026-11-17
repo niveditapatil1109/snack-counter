@@ -117,7 +117,7 @@ app.reports.monthlyReport('2026-11', { reportingCurrency: 'NOK', fxRates: { INR:
 
 | Document | For |
 |---|---|
-| [`DESIGN.md`](DESIGN.md) / [`DESIGN.docx`](DESIGN.docx) | The 2-page design (submission), in Markdown and Word |
+| [`DESIGN.md`](DESIGN.md) / [`DESIGN.docx`](DESIGN.docx) / [`DESIGN.pdf`](DESIGN.pdf) | The 2-page design (submission), in Markdown, Word and PDF |
 | [`docs/DESIGN-DETAILED.md`](docs/DESIGN-DETAILED.md) | Functional and non-functional requirements, trade-offs, out of scope, scaling path |
 | [`docs/CODE-WALKTHROUGH.md`](docs/CODE-WALKTHROUGH.md) | File-by-file, line-referenced explanation, likely questions, presentation script |
 
